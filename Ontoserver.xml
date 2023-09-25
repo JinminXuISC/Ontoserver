@@ -1,0 +1,822 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Export generator="IRIS" version="26" zv="IRIS for Windows (x86-64) 2022.1.2 (Build 574U)" ts="2023-09-25 12:33:01">
+<Class name="Region.AUXX.External.Base">
+<Super>%CSP.REST</Super>
+<System>3</System>
+<TimeChanged>66739,36739.7542784</TimeChanged>
+<TimeCreated>66739,36706.5743995</TimeCreated>
+
+<Parameter name="CHARSET">
+<Default>utf-8</Default>
+</Parameter>
+
+<Parameter name="CONTENTTYPE">
+<Default>application/json</Default>
+</Parameter>
+
+<Parameter name="HandleCorsRequest">
+<Default>1</Default>
+</Parameter>
+
+<Parameter name="PAGESIZE">
+<Type>INTEGER</Type>
+<Default>20</Default>
+</Parameter>
+
+<Method name="OnPreDispatch">
+<ClassMethod>1</ClassMethod>
+<FormalSpec><![CDATA[pUrl:%String,pMethod:%String,&pContinue:%Boolean]]></FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+  SET tSC = $$$OK
+  TRY {
+    
+    // Set the return type according to the Accept type in the request. Default is application/json.
+    IF ('..AcceptsContentType(..#CONTENTTYPEJSON)) {
+      SET tSC = ..ReportHttpStatusCode(..#HTTP406NOTACCEPTABLE), pContinue=0
+      QUIT 
+        } ELSE {   
+      // This always returns json
+      SET %response.ContentType=..#CONTENTTYPEJSON
+        }
+        
+        
+        // read request object into %DynamicObject format
+    IF ((pMethod'="POST") && (pMethod'="PUT")) || (%request.Content="") {
+      SET %request.Content = {}
+    } ELSE {
+      IF '$isobject(%request.Content) {
+        SET tContent = %request.Content
+      } ELSE {
+        SET tContent = ""
+        WHILE '%request.Content.AtEnd {
+          SET tContent = tContent_%request.Content.Read()
+        }
+      }
+      IF (tContent="") {
+        SET %request.Content = {}
+      } ELSE {
+        SET tContent = $zconvert(tContent, "I", "UTF8")
+        SET %request.Content = ##class(%Library.DynamicObject).%FromJSON(tContent)
+      }
+    }
+        
+  } CATCH ex {
+    SET tSC = ex.AsStatus()
+  }
+  QUIT ##class(%iKnow.REST.Base).%ErrorHandler(tSC, .pContinue)
+]]></Implementation>
+</Method>
+
+<Method name="%ProcessResult">
+<Internal>1</Internal>
+<ClassMethod>1</ClassMethod>
+<FormalSpec>pStatus:%Status=$$$OK,pResult:%DynamicObject=""</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+  #dim %response As %CSP.Response
+  SET tSC = $$$OK
+  IF $$$ISERR(pStatus) {
+    SET %response.Status = 500
+    SET tSC = ..StatusToJSON(pStatus, .tJSON)
+    IF $isobject(tJSON) {
+      SET pResult = tJSON
+    } ELSE {
+      SET pResult = { "errors": [ { "error": "Unknown error parsing status code" } ] }
+    }
+  } 
+  ELSEIF pStatus=1 {
+    IF '$isobject(pResult){
+      SET pResult = {
+      }
+    }
+  }
+  ELSE {
+    SET %response.Status = pStatus
+    SET error = $PIECE(pStatus, " ", 2, *)
+    SET pResult = {
+      "error": (error)
+    }
+  }
+  
+  IF pResult.%Extends("%Library.DynamicAbstractObject") {
+    WRITE pResult.%ToJSON()
+  }
+  ELSEIF pResult.%Extends("%JSON.Adaptor") {
+    DO pResult.%JSONExport()
+  }
+  ELSEIF pResult.%Extends("%Stream.Object") {
+    DO pResult.OutputToDevice()
+  }
+  
+  QUIT tSC
+]]></Implementation>
+</Method>
+
+<Method name="ReportHttpStatusCode">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>pHttpStatus,pSC:%Status=$$$OK</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+  Set %response.Status=pHttpStatus
+  
+  If $$$ISERR(pSC) Do ..outputStatus(pSC)
+  /*
+  If (+pHttpStatus>=400) {
+    Set %response.ContentType = "application/json"
+    SET pResult = {
+      "error": ($PIECE(pHttpStatus, " ", 2, *))
+    }
+    Return ..%ProcessResult($$$OK, pResult)
+  }*/
+      
+  Return $$$OK
+]]></Implementation>
+</Method>
+</Class>
+
+
+<Class name="Region.AUXX.External.Ontoserver.Resource">
+<Description>
+This class implements storage for Ontoserver available datasets
+It is populated and maintained by Region.AUXX.External.Ontoserver.Tasks - SynchroniseValueSets method</Description>
+<Super>%Persistent</Super>
+<TimeChanged>66436,48104.5916498</TimeChanged>
+<TimeCreated>66430,66264.821451</TimeCreated>
+
+<Property name="ResourceType">
+<Type>%String</Type>
+<Parameter name="DISPLAYLIST" value=",Concept,Reference Set, Value Set"/>
+<Parameter name="VALUELIST" value=",C,R,V"/>
+</Property>
+
+<Property name="Code">
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="500"/>
+</Property>
+
+<Property name="Description">
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="500"/>
+</Property>
+
+<Property name="Publisher">
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="500"/>
+</Property>
+
+<Property name="URL">
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="500"/>
+</Property>
+
+<Property name="Date">
+<Type>%String</Type>
+</Property>
+
+<Property name="LastUpdated">
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="500"/>
+</Property>
+
+<Index name="Description">
+<Properties>Description</Properties>
+</Index>
+
+<Index name="Code">
+<Properties>Code</Properties>
+</Index>
+
+<Storage name="Default">
+<Type>%Storage.Persistent</Type>
+<DataLocation>^Region.AUXX.Exter998D.ResourceD</DataLocation>
+<DefaultData>ResourceDefaultData</DefaultData>
+<IdLocation>^Region.AUXX.Exter998D.ResourceD</IdLocation>
+<IndexLocation>^Region.AUXX.Exter998D.ResourceI</IndexLocation>
+<StreamLocation>^Region.AUXX.Exter998D.ResourceS</StreamLocation>
+<ExtentSize>1144</ExtentSize>
+<Data name="ResourceDefaultData">
+<Structure>listnode</Structure>
+<Subscript/>
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+<Value name="2">
+<Value>ResourceType</Value>
+</Value>
+<Value name="3">
+<Value>Code</Value>
+</Value>
+<Value name="4">
+<Value>Description</Value>
+</Value>
+<Value name="5">
+<Value>Publisher</Value>
+</Value>
+<Value name="6">
+<Value>URL</Value>
+</Value>
+<Value name="7">
+<Value>Date</Value>
+</Value>
+<Value name="8">
+<Value>LastUpdated</Value>
+</Value>
+</Data>
+<Property name="%%CLASSNAME">
+<Selectivity>100.0000%</Selectivity>
+<AverageFieldSize>2</AverageFieldSize>
+<Histogram>$lb(.06666666666666666667,0,16,$lb("-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000","-10000000000000000000"),$lb(21,21,21,21,21,21,21,21,21,21,21,21,21,21,21),$lb(758198320,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,758198320))</Histogram>
+</Property>
+<Property name="%%ID">
+<Selectivity>1</Selectivity>
+<AverageFieldSize>3.78</AverageFieldSize>
+<Histogram>$lb(.06666666666666666667,1,0,$lb("1","77","154","231",308,"384","460","536","612","688","764","840","916","992","1068","1144"),$lb(0,0,0,0,1,0,0,0,1,0,0,0,1,0,1),$lb(822083584,822083584,926351360,926351360,825570304,825570304,842215680,842215680,858798080,808976384,942931968,859321344,875966464,875966464,892548608,892548608,909193728,825360384,943194112,909654016,926299136,926299136,942944256,942944256,959526400,825622528,959578112,960049664,825243192,808859648,825504768,825308212))</Histogram>
+</Property>
+<Property name="Code">
+<Selectivity>0.0874%</Selectivity>
+<AverageFieldSize>21.12</AverageFieldSize>
+<Histogram>$lb(.06666666666666666667,0,0,$lb(" 1021000036104"," 32570351000036105"," ADDRESS-USE-HL7-V3-2"," CASIDE-CANCERHISTOLOGICALGRADEVS"," CONTACTENTITY-TYPE"," EXTENSION-CONTEXT-TYPE"," LATERALITY-1.0.1"," MITO-NIJMEGEN-METABOLIC-URINE-2A"," NCDHC-SPECIAL-CARE-ADMISSIONS-1"," REASON-FOR-ENCOUNTER-1"," SUBSTANCE-CODE"," V2-0216"," V2-0430"," V2-0905"," V3-HL7UPDATEMODE"," YESNODONTKNOW"),$lb(1,1,1,2,1,1,1,1,1,1,1,5,5,2,1),$lb(540094514,825242161,858928439,858928439,1094992978,1094992978,1128354633,1095977284,1330533441,1129270868,1163416645,1163416645,1279349829,1279349829,1296651343,1296651343,1313031240,1313031240,1380270419,1380270419,1398096467,1398096467,1446128944,842085888,875769856,875769856,959460608,841822265,858605644,1446194504,1497715534,542721363))</Histogram>
+</Property>
+<Property name="Date">
+<Selectivity>1.4569%</Selectivity>
+<OutlierSelectivity>.431818:</OutlierSelectivity>
+<AverageFieldSize>12.09</AverageFieldSize>
+<Histogram>$lb(.06666666666666666667,0,0,$lb(" "," "," "," "," "," "," "," 2018-08-12"," 2019-11-01T09:29:23+11:00"," 2019-11-01T09:29:23+11:00"," 2019-11-01T09:29:23+11:00"," 2019-11-01T09:29:23+11:00"," 2019-11-01T09:29:23+11:00"," 2020-05-31"," 2020-05-31"," 2023-05-12"),$lb(2,2,2,2,2,2,1,4,27,27,27,27,3,12,4),$lb(536870912,0,0,0,0,0,0,0,0,0,0,0,0,0,842019128,942485560,959263025,0,0,0,0,0,0,0,0,825830705,842018096,0,0,808267829,858599477,540160050))</Histogram>
+</Property>
+<Property name="Description">
+<Selectivity>0.0998%</Selectivity>
+<AverageFieldSize>28.53</AverageFieldSize>
+<Histogram>$lb(.06666666666666666667,0,0,$lb(" "," ADVERSE REACTION AGENT"," CANCER HISTOLOGICAL GRADE VALUE SET"," CONTAINERCAP"," ENCOUNTERLOCATIONSTATUS"," IMAGING PROCEDURE"," MEDICATION REASON TAKEN"," NCDHC QUANTITY OF LIQUOR"," PROBLEM/DIAGNOSIS REFERENCE SET"," SCREENING PROCEDURES VALUE SET"," TRADE PRODUCT PACK REFERENCE SET"," V2 DOCUMENT STORAGE STATUS"," V2 PRACTITIONER ORGANIZATION UNIT TYPE"," V2 TELECOMMUNICATION EQUIPMENT TYPE"," V3 CODE SYSTEM QUERYSTATUSCODE"," YES NO QUALIFIER VALUE SET"),$lb(1,1,2,1,1,1,1,1,1,1,1,4,4,2,1),$lb(536870912,0,1094997573,1094997573,1128353347,1095648069,1330533441,1129270868,1162756943,1162756943,1229799751,1229799751,1296385097,1296385097,1313031240,1313031240,1347571522,1347571522,1396920901,1396920901,1414676804,1414676804,1446125636,1146045269,1347567939,1347567939,1413827653,840979525,857752399,1446191171,1497715488,542721363))</Histogram>
+</Property>
+<Property name="LastUpdated">
+<Selectivity>100.0000%</Selectivity>
+<AverageFieldSize>2</AverageFieldSize>
+<Histogram>$lb(.06666666666666666667,0,0,$lb(" "," "," "," "," "," "," "," "," "," "," "," "," "," "," "," "),$lb(2,2,2,2,2,2,2,2,2,2,2,2,2,2,2),$lb(536870912,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,536870912))</Histogram>
+</Property>
+<Property name="Publisher">
+<Selectivity>2.6130%</Selectivity>
+<OutlierSelectivity>.268357:"HL7, Inc"</OutlierSelectivity>
+<AverageFieldSize>16.6</AverageFieldSize>
+<Histogram>$lb(.06666666666666666667,0,0,$lb(" "," "," "," AUSTRALIAN DIGITAL HEALTH AGENCY"," AUSTRALIAN DIGITAL HEALTH AGENCY"," AUSTRALIAN DIGITAL HEALTH AGENCY"," FHIR PROJECT TEAM"," FINANCIAL MANAGEMENT"," HL7 (FHIR PROJECT)"," HL7 (FHIR PROJECT)"," HL7 (FHIR PROJECT)"," HL7, INC"," HL7, INC"," HL7, INC"," HL7, INC"," USHIK"),$lb(2,2,1,34,34,1,2,1,20,20,4,10,10,10,1),$lb(536870912,0,0,0,0,0,1096110932,0,0,0,0,1096110932,1179142482,1212764704,1229865294,1179209281,1212954400,0,0,0,0,539510344,740313422,0,0,0,0,0,0,1212954412,1431521353,542462792))</Histogram>
+</Property>
+<Property name="ResourceType">
+<Selectivity>12.5874%</Selectivity>
+<OutlierSelectivity>.874126:"V"</OutlierSelectivity>
+<AverageFieldSize>3</AverageFieldSize>
+<Histogram>$lb(.06666666666666666667,0,0,$lb(" R"," R"," V"," V"," V"," V"," V"," V"," V"," V"," V"," V"," V"," V"," V"," V"),$lb(3,1,3,3,3,3,3,3,3,3,3,3,3,3,3),$lb(542244864,0,0,1375731712,1442840576,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,542507008))</Histogram>
+</Property>
+<Property name="URL">
+<Selectivity>0.0949%</Selectivity>
+<OutlierSelectivity>.125874:</OutlierSelectivity>
+<AverageFieldSize>50.8</AverageFieldSize>
+<Histogram>$lb(.06666666666666666667,0,0,$lb(" "," "," HTTP://GRADIANT.ORG/FHIR/VALUESET/CASIDECANCERNCATEGORYVS"," HTTP://HL7.ORG/FHIR/VALUESET/COMPOSITION-STATUS"," HTTP://HL7.ORG/FHIR/VALUESET/EX-PAYEE-RESOURCE-TYPE"," HTTP://HL7.ORG/FHIR/VALUESET/MEDICATIONREQUEST-STATUS-REASON"," HTTP://HL7.ORG/FHIR/VALUESET/RESPONSE-CODE"," HTTP://TERMINOLOGY.HL7.ORG/VALUESET/V2-0124"," HTTP://TERMINOLOGY.HL7.ORG/VALUESET/V2-0324"," HTTP://TERMINOLOGY.HL7.ORG/VALUESET/V2-0532"," HTTP://TERMINOLOGY.HL7.ORG/VALUESET/V3-AMERICANINDIANALASKANATIVELANGUAGES"," HTTP://TERMINOLOGY.HL7.ORG/VALUESET/V3-ROLECLASSPASSIVE"," HTTPS://HEALTHTERMINOLOGIES.GOV.AU/FHIR/VALUESET/ADVERSE-REACTION-AGENT-1"," HTTPS://HEALTHTERMINOLOGIES.GOV.AU/FHIR/VALUESET/HISTORY-OF-MEDICATION-USE-LIST-TYPE-1"," HTTPS://HEALTHTERMINOLOGIES.GOV.AU/FHIR/VALUESET/NCDHC-OUTCOME-OF-PREGNANCY-1"," HTTPS://WWW.RCPA.EDU.AU/FHIR/VALUESET/SPIA-REQUESTING-REFSET-3"),$lb(2,1,8,30,30,30,8,41,41,38,40,5,50,50,9),$lb(536870912,0,0,0,1213486160,1196572996,1212954414,1129270608,1163406672,1163406672,1296385097,1296385097,1380275024,1212954414,1413829197,825373696,858928128,858928128,892547584,841822261,858603853,1095583058,1380928581,976170836,1396322095,1094997573,1212765012,1212765012,1313031240,1212498252,1465341742,541611092))</Histogram>
+</Property>
+<SQLMap name="Description">
+<BlockCount>-20</BlockCount>
+</SQLMap>
+<SQLMap name="IDKEY">
+<BlockCount>-108</BlockCount>
+</SQLMap>
+</Storage>
+</Class>
+
+
+<Class name="Region.AUXX.External.Ontoserver.Tasks">
+<Description>
+This class implements scheduled tasks for TrakCare / Ontoserver</Description>
+<Super>%SYS.Task.Definition</Super>
+<TimeChanged>66710,39444.506105</TimeChanged>
+<TimeCreated>66430,66119.283966</TimeCreated>
+
+<Method name="SynchroniseDataSets">
+<Description>
+This method synchronises storage in Region.AUXX.External.Ontoserver.ValueSet with the Ontoserver value sets
+set status=##class(Region.AUXX.External.Ontoserver.Tasks).SynchroniseDataSets("NTTS.FHIR.HTTP.Service")</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec>service:%String</FormalSpec>
+<ReturnType>%Library.Status</ReturnType>
+<Implementation><![CDATA[
+	#dim error as %Exception.General
+	
+	Try {
+		// Initialise status
+		set status=$$$OK
+		
+		// Cleardown value sets
+		do ##class(Region.AUXX.External.Ontoserver.Resource).%KillExtent()
+		
+		// Retrieve the Reference Sets list from Ontoserver
+		do ##class(Region.AUXX.External.Ontoserver).ExpandOperation(service,"","","url=http://snomed.info/sct?fhir_vs=refset",.fhirresponse)
+		
+		// Update data sets with Reference Sets
+		set status=..UpdateDataSets("R",fhirresponse)
+		
+		// Retrieve the Value Sets list from Ontoserver
+		do ##class(Region.AUXX.External.Ontoserver).GetValueSets(service,"ValueSet","","","",.fhirresponse)
+		
+		// Update data sets with Reference Sets
+		set status=..UpdateDataSets("V",fhirresponse)
+	}
+	
+	Catch error {
+		set status=error.AsStatus()
+	}
+
+	quit status
+]]></Implementation>
+</Method>
+
+<Method name="UpdateDataSets">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>resourcetype:%String,fhirresponse:HS.FHIRServer.API.Data.RestClient.Response</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	Try {
+
+		// Initialise status
+		set status=$$$OK
+		
+		// Retrieve the JSON payload from the fhir response stream
+		set JSONcharacterstream=fhirresponse.Payload.Read(fhirresponse.Payload.Size)
+		
+		// Create JSON dynamic objects from the JSON response
+		set JSON=[].%FromJSON(JSONcharacterstream)
+		
+		// If the return was a valid JSON structure
+		if JSON.%IsA("%Library.DynamicObject") {
+			
+			// Decompose and save Reference Sets
+			if resourcetype="R" {
+				 
+				// If there is a valid JSON dataset returned in JSON.expansion.contains declare JSON array iterator
+				if JSON.expansion.contains'="" {
+					
+					set arrayiterator=JSON.expansion.contains.%GetIterator()
+					
+					while arrayiterator.%GetNext(.key,.nextobject) {
+						
+						// Create new value set object ignoring inactive reference sets
+						if nextobject.inactive="" {
+							set resource=##class(Region.AUXX.External.Ontoserver.Resource).%New()
+							set resource.ResourceType=resourcetype
+							set resource.Code=nextobject.code
+							set resource.Description=nextobject.display
+							set status=resource.%Save()
+						}
+					}
+				}
+			}
+			
+			// Decompose and save Value Sets
+			elseif resourcetype="V"  {
+				 
+				// If there is a valid JSON dataset returned in JSON.expansion.contains declare JSON array iterator
+				if JSON.entry'="" {
+					
+					set arrayiterator=JSON.entry.%GetIterator()
+					
+					while arrayiterator.%GetNext(.key,.nextobject) {
+						
+						// Create new value set object ignoring inactive reference sets
+						if nextobject.inactive="" {
+							set resource=##class(Region.AUXX.External.Ontoserver.Resource).%New()
+							set resource.ResourceType=resourcetype
+							set resource.Code=nextobject.resource.id
+							set resource.Description=nextobject.resource.title
+							set resource.Publisher=nextobject.resource.publisher
+							set resource.URL=nextobject.resource.url
+							set resource.Date=nextobject.resource.date
+							set resource.LastUpdated=nextobject.resource.meta.lastUpdated
+							set status=resource.%Save()
+						}
+					}
+				}
+			}
+		}
+		
+		// There is no dynamic object available for decomposition
+		else {
+			throw ##class(%Exception.General).%New("DataSetSyncFailure",100,"","Synchoronisation of TrakCare with Ontoserver failed")
+		}
+	}
+	
+	Catch error {
+		set status=error.AsStatus()
+	}
+
+	quit status
+]]></Implementation>
+</Method>
+</Class>
+
+
+<Class name="Region.AUXX.External.Ontoserver">
+<Description><![CDATA[
+Include webtrace
+This class provides methods to support interaction of TrakCare InfoLink (TrakCare code table) with CSIRO Ontoserver (Ontology server for clinical terminology)
+For details on the use of CSIRO Ontoserver refer to 
+<li><a href=https://ontoserver.csiro.au/docs/6/>CSIRO Ontoserver Documentation</a>
+<li><a href=https://documenter.getpostman.com/view/634774/TVsuBmc9#9eafc605-c44f-40a8-9ca7-0b9c9df5275a>Postman entries from CSIRO</a>]]></Description>
+<Super>%Persistent,%JSON.Adaptor,%Populate</Super>
+<TimeChanged>66742,38573.4949094</TimeChanged>
+<TimeCreated>66205,43758.045663</TimeCreated>
+
+<Method name="ExecuteQuery">
+<Description>
+Called from InfoLink (TSR_EXEC)
+This method returns a data set to be retrieved by InfoLink via FetchRow</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec><![CDATA[&qHandle:%Binary,searchstring:%String="",provider:%String=""]]></FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	// Initialise status
+	set status=$$$OK
+
+	try {	
+		// Call Ontoserver, decompose the FHIR response and build the qHandle array
+		if ($length(searchstring)>2) {
+			
+			// Retrieve the configured parameters from Infolink code table
+			set service=##class(epr.CTInfoLink).GetCurrentConfigParam(provider, "TSRX_SERVICE")
+			set resourcetype=$system.SQL.UPPER(##class(epr.CTInfoLink).GetCurrentConfigParam(provider, "TSRX_RESOURCETYPE"))
+			set resourceid=##class(epr.CTInfoLink).GetCurrentConfigParam(provider, "TSRX_RESOURCE")
+			set returncount=##class(epr.CTInfoLink).GetCurrentConfigParam(provider, "TSRX_RETURNCOUNT")
+			
+	
+			// Debug - store ExecuteQuery parameters
+			///$$$ZTL("ONTOSERVER_DEBUG","ExecuteQueryParameters_ResourceType_ResourceId_ResourceCount_Service",service_"|"_resourcetype_"|"_resourceid_"|"_returncount,1)
+	
+			// If InfoLink is incorrectly configured throw error
+			if (resourcetype'="C")&(resourcetype'="R")&(resourcetype'="V")&(resourcetype='"") {
+				throw ##class(%Exception.General).%New("InfoLinkConfiguration",100,"","InfoLink TSRX_RESOURCETYPE is not configured correctly")
+			}
+
+			// Call the SearchResource method to retrieve the fhir response
+			set fhirresponse=..QueryResource(service,resourcetype,resourceid,returncount,searchstring)
+			
+			// Call the SearchResultDecompose method to extract the results from the FHIR response into the qHandle array to return to Infolink
+			set status=..QueryResultDecompose(fhirresponse,.qHandle)
+		}
+	}
+	
+	catch error {
+		set status=error.AsStatus()
+	}
+
+	// Debug - store status outcome for execute query
+	///$$$ZTL("ONTOSERVER_DEBUG","ExecuteQuery_status",status)
+	
+	quit status
+]]></Implementation>
+</Method>
+
+<Method name="FetchRow">
+<Description>
+Called from LookUp fetch in InfoLink (TSR_FETCH)
+Returns rows to InforLink from the query result in ExecuteQuery</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec><![CDATA[&qHandle:%Binary,&Row:%List,&AtEnd:%Integer=0]]></FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	set qHandle("RowIndex") = $order(qHandle("Data",$get(qHandle("RowIndex"))),1,Row)
+	set AtEnd = (qHandle("RowIndex") = "")
+	quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="SelectedTerm">
+<Description>
+Called from LookUp fetch in InfoLink (TSR_CODE)
+This method returns a list of values to Infolink to populate into the UI when a SNOMED term is selected</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec><![CDATA[&selected:%String]]></FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	set theList=$listfromstring(selected,"^")
+	set desc=$listget(theList,1)
+	set code=$listget(theList,2)
+	set sct=$listget(theList,4)
+	set sct2tc=$listget(theList,8) //sctDesc
+	set sctrow=$listget(theList,10) //sctRow
+	
+	// ^PAC("SNOC",0,"ConcID",$$ALPHAUP({SNOC_ConceptID}),{SNOC_RowId})
+	set sccrow=$order(^PAC("SNOC",0,"ConcID",$$$ALPHAUP(sct),""))
+	if (sccrow'="") {
+		set (sct2tc,sctrow)=""
+		&SQL(SELECT TOP 1 SNOT_RowId, SNOT_Term INTO :sctrow, :sct2tc FROM SQLUser.PAC_SnomedTerms
+			WHERE SNOT_Concept_DR=:sccrow AND SNOT_DescType=3)
+		if ($get(SQLCODE)=100) {
+			&SQL(SELECT TOP 1 SNOT_RowId, SNOT_Term INTO :sctrow, :sct2tc FROM SQLUser.PAC_SnomedTerms
+				WHERE SNOT_Concept_DR=:sccrow AND SNOT_DescType=1)
+		}
+		
+		if (sct2tc="") {
+			set sct2tc="Snomed Concept "_sct_" not available in TrakCare"
+		}
+	}
+	set $list(theList,2)=sct
+	set $list(theList,8)=sct2tc
+	set $list(theList,10)=sctrow
+	set selected=$listtostring(theList,"^")
+	
+	quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="QueryResource">
+<Description>
+This method prepares the query string for the Ontoserver for SNOMED terminology search and calls the FHIR $expand operation</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec>service:%String,resourcetype:%String,resourceid:%String,returncount:%Integer=10,searchstring:%String</FormalSpec>
+<ReturnType>HS.FHIRServer.API.Data.RestClient.Response</ReturnType>
+<Implementation><![CDATA[
+	#dim fhirrequest as HS.FHIRServer.RestClient.HTTP
+	#dim fhirresponse as HS.FHIRServer.API.Data.RestClient.Response
+
+	// Example of using an ECL expression to provide granular context
+	// ECL may be built using CSIRO Shrimp - Remove text items between |...| and blank space " " prior to implementation
+	// set querystring="url=http://snomed.info/sct?fhir_vs=ecl/"_##class(%CSP.Page).EscapeURL("< 404684003:363698007=<<61685007")_"&count="_returncount_"&filter="_##class(%CSP.Page).EscapeURL(searchstring)
+	
+	// Build the Ontoserver query string - C-> Concept "isa" R -> Reference Set "refset" V -> ValueSet
+	if (resourcetype="C")!(resourcetype="R") {
+		
+		set fhirvs=$select(resourcetype="C":"isa",resourcetype="R":"refset")
+		set querystring="url=http://snomed.info/sct?fhir_vs="_fhirvs_"/"_resourceid_"&filter="_##class(%CSP.Page).EscapeURL(searchstring)_"&count="_returncount
+		
+		// Resource not required for $expand on Concept or Reference Set - only required in query string
+		set resourceid=""	
+	}
+	
+	// For ValueSetSearch
+	elseif resourcetype="V" {
+		
+		// NOTE: Resource is the Value set name - as string - e.g. pathology-procedure-1
+		set querystring="filter="_##class(%CSP.Page).EscapeURL(searchstring)_"&count="_returncount
+	}
+	
+	// Default search
+	else {
+		
+		// Default to all of SNOMED by Concept = 138875005 and 30 rows returned
+		// set querystring="url=http://snomed.info/sct?fhir_vs=isa/138875005&filter="_##class(%CSP.Page).EscapeURL(searchstring)_"&count=30"
+		set querystring = ""
+	}	
+	
+	// Call $expand operation (FHIR search functionality)
+	do ..ExpandOperation(service,"ValueSet",resourceid,querystring,.fhirresponse)
+	
+	// Return FHIR response
+	quit fhirresponse
+]]></Implementation>
+</Method>
+
+<Method name="ExpandOperation">
+<Description>
+This method retrieves the service details registered in IRIS SMP and calls the Ontoserver $expand with the supplied query string
+This method can be used for all FHIR $expand ValueSet operations to the Ontoserver</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec><![CDATA[service:%String,resource:%String="",resourceid:%String="",querystring:%String="",&fhirresponse:%String]]></FormalSpec>
+<Implementation><![CDATA[
+	// Get FHIR Request object
+	do ..GetFHIRRequest(service,.fhirrequest) 
+	
+	// Debug - store fhir request for $expand operation
+	//$$$ZTL("ONTOSERVER_DEBUG","expand_fhirrequest",fhirrequest,1)
+	//$$$ZTL("ONTOSERVER_DEBUG","expand_querystring",querystring,1)
+	
+	// Call $expand operation (FHIR search functionality)
+	set fhirresponse=fhirrequest.Operation("GET","$expand","ValueSet",resourceid,resource,querystring)
+	
+	// Debug - store fhir response for $expand operation
+	//$$$ZTL("ONTOSERVER_DEBUG","expand_fhirresponse",fhirresponse,1)
+]]></Implementation>
+</Method>
+
+<Method name="GetValueSets">
+<Description>
+This method retrieves the service details registered in IRIS SMP and calls the Ontoserver ValueSet search with the supplied query string to retrieve a list of available Value Sets</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec><![CDATA[service:%String,resourcetype:%String="ValueSet",compartment:%String="",resourceid:%String="",querystring:%String="",&fhirresponse:%String]]></FormalSpec>
+<Implementation><![CDATA[
+	// Get FHIR Request object
+	do ..GetFHIRRequest(service,.fhirrequest) 
+
+	// Debug - store fhir request for search
+	//$$$ZTL("ONTOSERVER_DEBUG","search_fhirrequest",fhirrequest,1)
+	//$$$ZTL("ONTOSERVER_DEBUG","search_querystring",querystring,1)
+		
+	// Call $expand operation (FHIR search functionality)
+	set fhirresponse=fhirrequest.Search("GET",resourcetype,compartment,resourceid,querystring)
+	
+	// Debug - store fhir response for search
+	//$$$ZTL("ONTOSERVER_DEBUG","search_fhirresponse",fhirresponse,1)
+]]></Implementation>
+</Method>
+
+<Method name="GetFHIRRequest">
+<ClassMethod>1</ClassMethod>
+<FormalSpec><![CDATA[service:%String,&fhirrequest:HS.FHIRServer.RestClient.HTTP]]></FormalSpec>
+<Implementation><![CDATA[
+	// Create instance of FHIR service
+	// Service configured in System Management Portal - Health -> Service
+	// Provided by InfoLink configuration item TSRX_SERVICE - as service name
+	set fhirrequest=##class(HS.FHIRServer.RestClient.HTTP).CreateInstance(service)
+	do fhirrequest.SetRequestFormat("JSON")
+	do fhirrequest.SetResponseFormat("JSON")
+]]></Implementation>
+</Method>
+
+<Method name="QueryResultDecompose">
+<Description>
+This method decomposes the JSON bundle returned from Ontoserver for the qHandle array used by FetchRow method</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec><![CDATA[fhirresponse:HS.FHIRServer.API.Data.RestClient.Response,&qHandle:%String]]></FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	// Initialise status
+	set status=$$$OK
+	
+	// Retrieve the JSON payload from the fhir response stream
+	set JSONcharacterstream=fhirresponse.Payload.Read(fhirresponse.Payload.Size)
+	
+	// Create JSON dynamic objects from the JSON response
+	set JSON=[].%FromJSON(JSONcharacterstream)
+	
+	// If the return was a valid JSON structure
+	if JSON.%IsA("%Library.DynamicObject") {
+		
+		// If there is a valid JSON dataset returned in JSON.expansion.contains declare JSON array iterator
+		if JSON.expansion.contains'="" {
+			set arrayiterator=JSON.expansion.contains.%GetIterator()
+			
+			// In a loop unpack the JSON array into dynamic objects and populate the qHandle array
+			set (title,code,icd,sct,cpt,loi,icd2tc,sct2tc,icdrow,sctrow,icdc,sctc,xml,deriveCode,cnt)=""
+			while arrayiterator.%GetNext(.key,.nextobject) {
+				set qHandle("Data",$increment(cnt))=$listbuild(nextobject.display,nextobject.code,icd,nextobject.code,cpt,loi,icd2tc,sct2tc,icdrow,sctrow,icdc,sctc,xml,deriveCode)
+			}
+		}
+	}
+	else {
+		set status=0
+	}
+	
+	// Return status
+	quit status
+]]></Implementation>
+</Method>
+
+<Method name="TestQueryResource">
+<Description>
+Example test calls
+do ##class(Region.AUXX.External.Ontoserver).TestQueryResource("Ontoserver.FHIR.HTTPS.Service","C","71388002",10,"App") - Return first 10 matches for "App" in Concept 71388002 (Procedures) 
+do ##class(Region.AUXX.External.Ontoserver).TestQueryResource("Ontoserver.FHIR.HTTPS.Service","R","1061861000168107",10,"App") - Return first 10 matches for "App" in Reference Set 1061861000168107 (Royal Australasian College of Surgeons MALT surgical procedure reference set)
+do ##class(Region.AUXX.External.Ontoserver).TestQueryResource("Ontoserver.FHIR.HTTPS.Service","V","pathology-procedure-1",10,"Liv") - Return first 10 matches in Value Set pathology-procedure-1 (Pathology Procedure)</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec>service:%String,resourcetype:%String="C",resource:%String="138875005",returncount:%Integer=10,searchstring:%String=""</FormalSpec>
+<Implementation><![CDATA[
+	
+	// Call the QueryResource method to retrieve the fhir response
+	set fhirresponse=..QueryResource(service,resourcetype,resource,returncount,searchstring)
+	
+	// Call the ExpandDecompose method to extract the results from the FHIR response into an array
+	set status=..QueryResultDecompose(fhirresponse,.qHandle)
+	
+	// Iterate through qHandle and output display and code values
+	if status {
+		set cnt=""
+		for {
+			set cnt=$order(qHandle("Data",cnt))
+			if cnt="" {
+				quit
+			}
+			write !,$listget(qHandle("Data",cnt),1)," (",$listget(qHandle("Data",cnt),2),")"
+		}
+	}
+	
+	// Report Error
+	else {
+		write !,"Error occured"
+	}
+]]></Implementation>
+</Method>
+
+<Method name="CSP">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>service:%String,resourcetype:%String,resource:%String,returncount:%Integer=10,searchstring:%String</FormalSpec>
+<Implementation><![CDATA[
+	set resultList = $LISTBUILD()
+	
+	// Call the QueryResource method to retrieve the fhir response
+	set fhirresponse=..QueryResource(service,resourcetype,resource,returncount,searchstring)
+	
+	// Call the ExpandDecompose method to extract the results from the FHIR response into an array
+	set status=..QueryResultDecompose(fhirresponse,.qHandle)
+	
+	set resultArray = [] 
+	// Iterate through qHandle and output display and code values
+	if status {
+		set cnt=""
+		for {
+			set cnt=$order(qHandle("Data",cnt))
+			if cnt="" {
+				quit
+			}
+			set result1 = $listget(qHandle("Data",cnt),1)
+			set result2 = $listget(qHandle("Data",cnt),2)
+			set finalresult = result1 _ "-" _ result2 _ "."
+			set $LIST(resultList,cnt) = finalresult
+		}
+	}
+	
+	// Report Error
+	else {
+		write !,"Error occured"
+	}
+	return resultList
+]]></Implementation>
+</Method>
+
+<Storage name="Default">
+<Type>%Storage.Persistent</Type>
+<DataLocation>^Region.AUXX.ExtC97E.OntoserverD</DataLocation>
+<DefaultData>OntoserverDefaultData</DefaultData>
+<IdLocation>^Region.AUXX.ExtC97E.OntoserverD</IdLocation>
+<IndexLocation>^Region.AUXX.ExtC97E.OntoserverI</IndexLocation>
+<StreamLocation>^Region.AUXX.ExtC97E.OntoserverS</StreamLocation>
+<Data name="OntoserverDefaultData">
+<Structure>listnode</Structure>
+<Subscript/>
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Class name="Region.AUXX.External.RestApp">
+<Super>Region.AUXX.External.Base</Super>
+<TimeChanged>66742,43465.7496895</TimeChanged>
+<TimeCreated>66739,37104.3566575</TimeCreated>
+
+<Parameter name="Version">
+<Default>1.0.6</Default>
+</Parameter>
+
+<XData name="UrlMap">
+<XMLNamespace>http://www.intersystems.com/urlmap</XMLNamespace>
+<Data><![CDATA[
+<Routes>
+<!-- Get all records of Person class -->
+<Route Url="/lookup" Method="GET" Call="Lookup"/>
+</Routes>
+]]></Data>
+</XData>
+
+<Method name="Lookup">
+<ClassMethod>1</ClassMethod>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+
+    set result = ##class(Region.AUXX.External.Ontoserver).CSP("Ontoserver.FHIR.HTTPS.Service","C","71388002",10,"app")
+    
+    return result
+]]></Implementation>
+</Method>
+</Class>
+
+
+<Class name="Region.AUXX.External.Result">
+<Super>%Persistent,%JSON.Adaptor,%Populate</Super>
+<TimeChanged>66742,38477.3499596</TimeChanged>
+<TimeCreated>66742,38298.9088581</TimeCreated>
+
+<Method name="GetResult">
+<ClassMethod>1</ClassMethod>
+<Implementation><![CDATA[
+
+	set result = ##class(Region.AUXX.External.Ontoserver).CSP("Ontoserver.FHIR.HTTPS.Service","C","71388002",10,"")
+	return result
+]]></Implementation>
+</Method>
+
+<Storage name="Default">
+<Type>%Storage.Persistent</Type>
+<DataLocation>^Region.AUXX.External.ResultD</DataLocation>
+<DefaultData>ResultDefaultData</DefaultData>
+<IdLocation>^Region.AUXX.External.ResultD</IdLocation>
+<IndexLocation>^Region.AUXX.External.ResultI</IndexLocation>
+<StreamLocation>^Region.AUXX.External.ResultS</StreamLocation>
+<Data name="ResultDefaultData">
+<Structure>listnode</Structure>
+<Subscript/>
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+</Export>
